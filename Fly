@@ -8,6 +8,7 @@ local STUDS_PER_LEVEL = 30
 local flying = false
 local upHeld, downHeld = false, false
 local flyConn
+local flyPos, flyFlat -- آخر موضع واتجاه للطيران
 
 -- الواجهة (نفس الشكل)
 local main = Instance.new("ScreenGui")
@@ -16,9 +17,8 @@ main.Parent = plr:WaitForChild("PlayerGui")
 main.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 main.ResetOnSpawn = false
 
-local MENU_COLOR = Color3.fromRGB(22, 24, 38)   -- لون القائمة
-local BTN_COLOR = Color3.fromRGB(235, 235, 240) -- لون الأزرار
-local BLACK = Color3.new(0, 0, 0)               -- لون النص: أسود
+local MENU_COLOR = Color3.fromRGB(22, 24, 38)
+local BLACK = Color3.new(0, 0, 0)
 
 local function make(class, props)
 	local o = Instance.new(class)
@@ -26,28 +26,36 @@ local function make(class, props)
 	return o
 end
 
--- حواف قوس قزح متحركة
-local rainbowGradients = {}
+-- قوس قزح متحرك: حافة + تعبئة داخل الزر
+local borderGradients, fillGradients = {}, {}
 local RAINBOW = ColorSequence.new({
-	ColorSequenceKeypoint.new(0.00, Color3.fromRGB(255, 0, 0)),
-	ColorSequenceKeypoint.new(0.17, Color3.fromRGB(255, 255, 0)),
-	ColorSequenceKeypoint.new(0.33, Color3.fromRGB(0, 255, 0)),
-	ColorSequenceKeypoint.new(0.50, Color3.fromRGB(0, 255, 255)),
-	ColorSequenceKeypoint.new(0.67, Color3.fromRGB(0, 0, 255)),
-	ColorSequenceKeypoint.new(0.83, Color3.fromRGB(255, 0, 255)),
-	ColorSequenceKeypoint.new(1.00, Color3.fromRGB(255, 0, 0)),
+	ColorSequenceKeypoint.new(0.00, Color3.fromRGB(255, 70, 70)),
+	ColorSequenceKeypoint.new(0.17, Color3.fromRGB(255, 220, 60)),
+	ColorSequenceKeypoint.new(0.33, Color3.fromRGB(80, 255, 110)),
+	ColorSequenceKeypoint.new(0.50, Color3.fromRGB(70, 230, 255)),
+	ColorSequenceKeypoint.new(0.67, Color3.fromRGB(100, 110, 255)),
+	ColorSequenceKeypoint.new(0.83, Color3.fromRGB(255, 90, 255)),
+	ColorSequenceKeypoint.new(1.00, Color3.fromRGB(255, 70, 70)),
 })
 
-local function rainbowBorder(obj)
+local function rainbow(obj)
+	obj.BackgroundColor3 = Color3.new(1, 1, 1)
+	obj.BorderSizePixel = 0
+
+	local fill = Instance.new("UIGradient")
+	fill.Color = RAINBOW
+	fill.Parent = obj
+	table.insert(fillGradients, fill)
+
 	local s = Instance.new("UIStroke")
-	s.Color = Color3.new(1, 1, 1) -- لازم أبيض عشان يظهر التدرج
+	s.Color = Color3.new(1, 1, 1)
 	s.Thickness = 2
 	s.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 	s.Parent = obj
 	local g = Instance.new("UIGradient")
 	g.Color = RAINBOW
 	g.Parent = s
-	table.insert(rainbowGradients, g)
+	table.insert(borderGradients, g)
 end
 
 local Frame = make("Frame", {
@@ -62,13 +70,12 @@ local Frame = make("Frame", {
 
 local function btn(name, text, pos, size, scaled)
 	local b = make("TextButton", {
-		Name = name, Parent = Frame, BackgroundColor3 = BTN_COLOR,
+		Name = name, Parent = Frame,
 		Position = pos, Size = size, Font = Enum.Font.SourceSans,
 		Text = text, TextColor3 = BLACK,
 		TextSize = 14, TextScaled = scaled or false, TextWrapped = scaled or false,
-		BorderSizePixel = 0,
 	})
-	rainbowBorder(b)
+	rainbow(b)
 	return b
 end
 
@@ -79,54 +86,53 @@ local mine = btn("mine", "-", UDim2.new(0.23, 0, 0.49, 0), UDim2.new(0, 45, 0, 2
 local onof = btn("onof", "fly: OFF", UDim2.new(0.7, 0, 0.49, 0), UDim2.new(0, 56, 0, 28))
 
 local TextLabel = make("TextLabel", {
-	Parent = Frame, BackgroundColor3 = BTN_COLOR, BorderSizePixel = 0,
+	Parent = Frame,
 	Position = UDim2.new(0.47, 0, 0, 0), Size = UDim2.new(0, 100, 0, 28),
 	Font = Enum.Font.SourceSans, Text = "FLY GUI",
 	TextColor3 = BLACK, TextScaled = true, TextWrapped = true,
 })
-rainbowBorder(TextLabel)
+rainbow(TextLabel)
 
 local speedLabel = make("TextLabel", {
-	Name = "speed", Parent = Frame, BackgroundColor3 = BTN_COLOR, BorderSizePixel = 0,
+	Name = "speed", Parent = Frame,
 	Position = UDim2.new(0.47, 0, 0.49, 0), Size = UDim2.new(0, 44, 0, 28),
 	Font = Enum.Font.SourceSans, Text = "1",
 	TextColor3 = BLACK, TextScaled = true, TextWrapped = true,
 })
-rainbowBorder(speedLabel)
+rainbow(speedLabel)
 
 local closebutton = make("TextButton", {
-	Name = "Close", Parent = Frame, BackgroundColor3 = BTN_COLOR, BorderSizePixel = 0,
+	Name = "Close", Parent = Frame,
 	Font = Enum.Font.SourceSans, Size = UDim2.new(0, 45, 0, 28),
 	Text = "X", TextColor3 = BLACK, TextSize = 30, Position = UDim2.new(0, 0, -1, 27),
 })
-rainbowBorder(closebutton)
+rainbow(closebutton)
 
 local mini = make("TextButton", {
-	Name = "minimize", Parent = Frame, BackgroundColor3 = BTN_COLOR, BorderSizePixel = 0,
+	Name = "minimize", Parent = Frame,
 	Font = Enum.Font.SourceSans, Size = UDim2.new(0, 45, 0, 28),
 	Text = "-", TextColor3 = BLACK, TextSize = 40, Position = UDim2.new(0, 44, -1, 27),
 })
-rainbowBorder(mini)
+rainbow(mini)
 
 local mini2 = make("TextButton", {
-	Name = "minimize2", Parent = Frame, BackgroundColor3 = BTN_COLOR, BorderSizePixel = 0,
+	Name = "minimize2", Parent = Frame,
 	Font = Enum.Font.SourceSans, Size = UDim2.new(0, 45, 0, 28),
 	Text = "+", TextColor3 = BLACK, TextSize = 40, Position = UDim2.new(0, 44, -1, 57), Visible = false,
 })
-rainbowBorder(mini2)
+rainbow(mini2)
 
--- تحريك القوس قزح: اتصال واحد فقط لكل الحواف
+-- تحريك القوس قزح (اتصال واحد لكل شيء)
 local rot = 0
 RunService.RenderStepped:Connect(function(dt)
-	rot = (rot + dt * 120) % 360
-	for _, g in ipairs(rainbowGradients) do
-		g.Rotation = rot
-	end
+	rot = (rot + dt * 100) % 360
+	for _, g in ipairs(borderGradients) do g.Rotation = rot end
+	for _, g in ipairs(fillGradients) do g.Rotation = -rot end
 end)
 
 local bodyItems = {up, down, onof, plus, speedLabel, mine, TextLabel}
 
--- الأنيميشن من السكربت السابق (يُحمَّل مرة واحدة)
+-- الأنيميشن (من السكربت السابق)
 local ANIM_IDLE  = {10714347256, 4}
 local ANIM_FWD   = {10714177846, 4.65}
 local ANIM_BACK  = {10147823318, 4.11}
@@ -185,8 +191,16 @@ local function stopFly()
 	upHeld, downHeld = false, false
 	if flyConn then flyConn:Disconnect(); flyConn = nil end
 	ClearAnim()
-	local char, hum = getParts()
+	local char, hum, root = getParts()
+	if root and flyPos and flyFlat then
+		-- اعتدال كامل قبل فك التثبيت
+		root.CFrame = CFrame.lookAt(flyPos, flyPos + flyFlat)
+		root.AssemblyLinearVelocity = Vector3.zero
+		root.AssemblyAngularVelocity = Vector3.zero
+		root.Anchored = false
+	end
 	if hum then
+		hum.AutoRotate = true
 		setBlocked(hum, false)
 		hum:ChangeState(Enum.HumanoidStateType.GettingUp)
 	end
@@ -201,35 +215,50 @@ local function startFly()
 	flying = true
 	onof.Text = "fly: ON"
 	setBlocked(hum, true)
-	hum:ChangeState(Enum.HumanoidStateType.Running)
+	hum.AutoRotate = false
 
 	pcall(function() char.Animate.Disabled = true end)
 	for _, t in ipairs(hum:GetPlayingAnimationTracks()) do t:Stop() end
 	PlayAnim(ANIM_IDLE)
 
-	flyConn = RunService.Heartbeat:Connect(function(dt)
+	flyPos = root.Position
+	local look0 = workspace.CurrentCamera.CFrame.LookVector
+	flyFlat = Vector3.new(look0.X, 0, look0.Z).Unit
+	local rotCF = root.CFrame.Rotation
+	local k = 0 -- مقدار الميلان (0 واقف .. 1 مستلقي 90 درجة)
+
+	root.AssemblyLinearVelocity = Vector3.zero
+	root.Anchored = true -- تثبيت = لا اهتزاز ولا انزلاق ولا سقوط
+
+	flyConn = RunService.RenderStepped:Connect(function(dt)
 		local c, h, r = getParts()
-		if not (c and h and r) or h.Health <= 0 then return end
+		if not (c and h and r) then return end
+		if h.Health <= 0 then stopFly() return end
 
 		local cam = workspace.CurrentCamera
+		local look = cam.CFrame.LookVector
+		local flat = Vector3.new(look.X, 0, look.Z)
+		if flat.Magnitude > 0.01 then flyFlat = flat.Unit end
+
 		local step = speeds * STUDS_PER_LEVEL * dt
 		local md = h.MoveDirection
 		local move = Vector3.zero
 		local vy = 0
 		local anim = ANIM_IDLE
+		local targetK = 0
 
 		if md.Magnitude > 0.1 then
 			move = md * step
-			local look = cam.CFrame.LookVector
-			local flatLook = Vector3.new(look.X, 0, look.Z)
-			local f = 0
-			if flatLook.Magnitude > 0.01 then
-				f = md:Dot(flatLook.Unit)
-				vy = look.Y * f * step
-			end
+			local f = md:Dot(flyFlat)
 			local rr = md:Dot(cam.CFrame.RightVector)
+			vy = look.Y * f * step
 			if math.abs(f) >= math.abs(rr) then
-				anim = f > 0 and ANIM_FWD or ANIM_BACK
+				if f > 0 then
+					anim = ANIM_FWD
+					targetK = 1
+				else
+					anim = ANIM_BACK
+				end
 			else
 				anim = rr > 0 and ANIM_RIGHT or ANIM_LEFT
 			end
@@ -239,11 +268,17 @@ local function startFly()
 		if downHeld then vy -= step end
 
 		PlayAnim(anim)
-		c:TranslateBy(move + Vector3.new(0, vy, 0))
+		flyPos = flyPos + move + Vector3.new(0, vy, 0)
 
-		-- التوقف في السماء: إلغاء السقوط تمامًا
-		local v = r.AssemblyLinearVelocity
-		r.AssemblyLinearVelocity = Vector3.new(v.X, 0, v.Z)
+		-- الميلان: 90 درجة للأمام، ويتبع نظر الكاميرا للأعلى/الأسفل
+		local a = 1 - math.exp(-12 * dt)
+		k = k + (targetK - k) * a
+		local pitch = math.clamp(math.asin(math.clamp(look.Y, -1, 1)), -math.rad(60), math.rad(60))
+		local theta = k * (pitch - math.rad(90))
+		local targetRot = CFrame.lookAt(Vector3.zero, flyFlat) * CFrame.Angles(theta, 0, 0)
+		rotCF = rotCF:Lerp(targetRot, a)
+
+		r.CFrame = CFrame.new(flyPos) * rotCF
 	end)
 end
 
